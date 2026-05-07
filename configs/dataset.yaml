@@ -1,0 +1,9 @@
+# Update these paths before training.
+path: ../dataset
+train: images/train
+val: images/val
+test: images/test
+
+# Replace the class names with the classes used in the study.
+names:
+  0: class_0
