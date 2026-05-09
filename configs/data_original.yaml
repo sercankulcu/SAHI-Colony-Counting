@@ -1,0 +1,35 @@
+# YOLO dataset configuration for resized full-plate baseline.
+# Recommended folder structure:
+# dataset/original/images/train, dataset/original/images/val, dataset/original/images/test
+# dataset/original/labels/train, dataset/original/labels/val, dataset/original/labels/test
+path: ../dataset/original
+train: images/train
+val: images/val
+test: images/test
+
+nc: 24
+names:
+  0: Actinobacillus_equuli
+  1: Actinobacillus_pleuropneumoniae
+  2: Aeromonas_hydrophila
+  3: Bacillus_cereus
+  4: Bibersteinia_trehalosi
+  5: Bordetella_bronchiseptica
+  6: Brucella_ovis
+  7: Clostridium_perfringens
+  8: Corynebacterium_pseudotuberculosis
+  9: Erysipelothrix_rhusiopathiae
+  10: Escherichia_coli
+  11: Glaesserella_parasuis
+  12: Klebsiella_pneumoniae
+  13: Listeria_monocytogenes
+  14: Paenibacillus_larvae
+  15: Pasteurella_multocida
+  16: Proteus_mirabilis
+  17: Pseudomonas_aeruginosa
+  18: Rhodococcus_equi
+  19: Salmonella_enterica
+  20: Staphylococcus_aureus
+  21: Staphylococcus_hyicus
+  22: Streptococcus_agalactiae
+  23: Trueperella_pyogenes

@@ -1,29 +1,19 @@
-# YOLO and SAHI-Based Object Detection Pipeline
+# SAHI Colony Counting Code
 
-This repository contains the source code used for YOLO-based object detection, SAHI-based tiled inference, visual evaluation, and result visualization. The scripts are organized to support reproducible model training, inference, and figure generation.
+This package contains the cleaned code needed for a YOLO + SAHI bacterial colony counting pipeline.
 
-## Repository Structure
+## Main contents
 
-```text
-.
-├── configs/
-│   └── dataset.yaml
-├── scripts/
-│   ├── train_yolo_model.py
-│   ├── train_yolov5n_sliced.py
-│   ├── train_yolov5n_original.py
-│   ├── create_sliced_yolo_dataset.py
-│   ├── run_sahi_inference.py
-│   ├── visualize_sahi_bboxes.py
-│   ├── draw_ground_truth_boxes.py
-│   ├── create_detection_heatmap.py
-│   ├── plot_validation_metrics.py
-│   └── plot_confusion_matrix.py
-├── legacy_detectron2/
-│   ├── train_detectron2_colonies.py
-│   └── inference_detectron2_colonies.py
-└── results/
-```
+- `configs/data.yaml`: 24-class YOLO configuration for the sliced/tiled dataset.
+- `configs/data_original.yaml`: 24-class YOLO configuration for the resized full-plate baseline.
+- `scripts/split_yolo_dataset_by_image.py`: splits original full-plate images into train/val/test.
+- `scripts/create_sliced_yolo_dataset.py`: creates overlapping 640×640 YOLO tiles and updates annotations.
+- `scripts/train_yolo_model.py`: generic YOLO training script for YOLOv5n, YOLOv8n, and YOLOv11n.
+- `scripts/evaluate_yolo_model.py`: evaluates trained YOLO checkpoints on train/val/test.
+- `scripts/run_sahi_inference.py`: performs SAHI-based tiled inference.
+- `scripts/create_detection_heatmap.py`: creates detection-density heatmaps.
+- `scripts/run_cross_validation_original_level.py`: 5-fold CV while grouping tiles by original image ID.
+- `scripts/run_overlap_sensitivity.py`: overlap-ratio timing and detection-count check.
 
 ## Installation
 
@@ -31,56 +21,153 @@ This repository contains the source code used for YOLO-based object detection, S
 pip install -r requirements.txt
 ```
 
-## Dataset Format
+## Recommended dataset structure
 
-The YOLO dataset should be organized as follows:
+Original full-plate dataset before splitting:
 
 ```text
-dataset/
-├── images/
-│   ├── train/
-│   ├── val/
-│   └── test/
-└── labels/
-    ├── train/
-    ├── val/
-    └── test/
+dataset/raw/images/
+dataset/raw/labels/
 ```
 
-Update `configs/dataset.yaml` according to the dataset location and class names.
+After splitting:
 
-## Training
-
-Train a YOLO model using the generic training script:
-
-```bash
-python scripts/train_yolo_model.py --weights yolov11n.pt --data configs/dataset.yaml --epochs 50 --imgsz 640 --batch 4 --device 0 --name yolov11n_sahi_pipeline
+```text
+dataset/original/images/train
+dataset/original/images/val
+dataset/original/images/test
+dataset/original/labels/train
+dataset/original/labels/val
+dataset/original/labels/test
 ```
 
-For the sliced dataset setup:
+After tiling:
 
-```bash
-python scripts/train_yolov5n_sliced.py
+```text
+dataset/parts/images/train
+dataset/parts/images/val
+dataset/parts/images/test
+dataset/parts/labels/train
+dataset/parts/labels/val
+dataset/parts/labels/test
 ```
 
-For the original-image setup:
+## 1. Split the original full-plate dataset
+
+This keeps the split at original-image level.
 
 ```bash
-python scripts/train_yolov5n_original.py
+python scripts/split_yolo_dataset_by_image.py \
+  --images-dir dataset/raw/images \
+  --labels-dir dataset/raw/labels \
+  --output-dir dataset/original \
+  --test-ratio 0.20 \
+  --val-ratio 0.16 \
+  --seed 42
 ```
 
-## SAHI-Based Tiled Inference
+## 2. Create 640×640 overlapping tiles
 
 ```bash
-python scripts/run_sahi_inference.py --model-path runs/detect/yolov11n_sahi_pipeline/weights/best.pt --model-type yolo11 --image-path examples/sample_image.jpg --output-dir results/sahi_predictions
+python scripts/create_sliced_yolo_dataset.py \
+  --input-root dataset/original \
+  --output-root dataset/parts \
+  --tile-size 640 \
+  --overlap 0.20
 ```
 
-## Heatmap Generation
+## 3. Train YOLO models
+
+Tiled YOLOv11n:
 
 ```bash
-python scripts/create_detection_heatmap.py --model-path runs/detect/yolov11n_sahi_pipeline/weights/best.pt --model-type yolo11 --image-path examples/sample_image.jpg --output-path results/detection_heatmap.jpg
+python scripts/train_yolo_model.py \
+  --model yolo11n.pt \
+  --data configs/data.yaml \
+  --epochs 50 \
+  --imgsz 640 \
+  --batch 4 \
+  --device 0 \
+  --name yolov11n_tiled
+```
+
+Resized full-plate baseline:
+
+```bash
+python scripts/train_yolo_model.py \
+  --model yolo11n.pt \
+  --data configs/data_original.yaml \
+  --epochs 50 \
+  --imgsz 640 \
+  --batch 4 \
+  --device 0 \
+  --name yolov11n_original
+```
+
+For YOLOv5n or YOLOv8n, replace `--model yolo11n.pt` with `yolov5n.pt` or `yolov8n.pt`.
+
+## 4. Evaluate a trained model
+
+```bash
+python scripts/evaluate_yolo_model.py \
+  --weights runs/detect/yolov11n_tiled/weights/best.pt \
+  --data configs/data.yaml \
+  --split test \
+  --imgsz 640 \
+  --device 0
+```
+
+## 5. Run SAHI tiled inference
+
+```bash
+python scripts/run_sahi_inference.py \
+  --weights runs/detect/yolov11n_tiled/weights/best.pt \
+  --image dataset/original/images/test/example.jpg \
+  --model-type yolo11 \
+  --slice-size 640 \
+  --overlap 0.20 \
+  --conf 0.50 \
+  --device cuda:0 \
+  --output-dir outputs/sahi \
+  --name example_sahi
+```
+
+## 6. Create a heatmap
+
+```bash
+python scripts/create_detection_heatmap.py \
+  --weights runs/detect/yolov11n_tiled/weights/best.pt \
+  --image dataset/original/images/test/example.jpg \
+  --model-type yolo11 \
+  --output outputs/heatmap.jpg
+```
+
+## 7. Plot validation metrics
+
+```bash
+python scripts/plot_validation_metrics.py \
+  --results-csv runs/detect/yolov11n_tiled/results.csv \
+  --output outputs/yolov11n_validation_metrics.png
+```
+
+## 8. Cross-validation without tile leakage
+
+This script groups files by original image ID. It expects tile names such as `image001_slice_0001.jpg`.
+
+```bash
+python scripts/run_cross_validation_original_level.py \
+  --images-dir dataset/parts/images/train \
+  --labels-dir dataset/parts/labels/train \
+  --model yolo11n.pt \
+  --folds 5 \
+  --epochs 50 \
+  --imgsz 640 \
+  --batch 8 \
+  --device 0
 ```
 
 ## Notes
 
-The Detectron2 scripts are kept in `legacy_detectron2/` only for archival purposes. They should not be used as the main implementation if the related article describes a YOLO and SAHI-based pipeline.
+- The `archive/detectron2_experiments` folder contains early Detectron2 experiments. These are not part of the reported YOLO-SAHI pipeline.
+- The dataset itself is not included in this ZIP.
+- Update the `path:` field in YAML files if your dataset folder is in a different location.
